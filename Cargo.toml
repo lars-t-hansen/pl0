@@ -1,0 +1,6 @@
+[package]
+name = "pl0"
+version = "0.1.0"
+authors = ["Lars T Hansen <lth@acm.org>"]
+
+[dependencies]
