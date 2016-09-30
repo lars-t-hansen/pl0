@@ -67,15 +67,16 @@ Built-in functions:
 mod ast;
 mod lex;
 mod parse;
-//mod tycheck;
+mod tycheck;
 
 use lex::Lex;
 use std::fs::File;
-//use tycheck::Typecheck;
 
 fn main() {
     let f = File::open("fib.pl0").unwrap();
-    let prog = parse::parse(Lex::new(f));
+    let prog = parse::parse(Lex::new(f)).unwrap();
+
+    tycheck::check_program(&prog).unwrap();
 
     println!("{:?}", prog);
 }

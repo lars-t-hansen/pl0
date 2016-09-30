@@ -7,3 +7,6 @@ fn fib(int n) -> int {
         return n;
     return fib(n-1) + fib(n-2);
 }
+
+fn print(int n) {
+}

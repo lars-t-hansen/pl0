@@ -1,7 +1,9 @@
-#[derive(Debug)]
+use std::cell::Cell;
+
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TypeName
 {
-    VOID,                       // Functions only
+    VOID,                       // For functions + uncomputed types
     INT,
     NUM
 }
@@ -136,13 +138,14 @@ impl WhileStmt
 #[derive(Debug)]
 pub struct ReturnStmt
 {
-    pub expr: Option<Expr>
+    pub expr: Option<Expr>,
+    pub ty: Cell<TypeName>
 }
 
 impl ReturnStmt
 {
     pub fn new(expr: Option<Expr>) -> Stmt {
-        Stmt::Return(Box::new(ReturnStmt { expr: expr }))
+        Stmt::Return(Box::new(ReturnStmt { expr: expr, ty: Cell::new(TypeName::VOID) }))
     }
 }
 
@@ -171,13 +174,14 @@ pub enum Unop
 pub struct UnaryExpr
 {
     pub op: Unop,
-    pub expr: Expr
+    pub expr: Expr,
+    pub ty: Cell<TypeName>
 }
 
 impl UnaryExpr
 {
     pub fn new(op: Unop, expr: Expr) -> Expr {
-        Expr::Unary(Box::new( UnaryExpr { op: op, expr: expr } ))
+        Expr::Unary(Box::new( UnaryExpr { op: op, expr: expr, ty: Cell::new(TypeName::VOID) } ))
     }
 }
 
@@ -204,13 +208,14 @@ pub struct BinaryExpr
 {
     pub op: Binop,
     pub lhs: Expr,
-    pub rhs: Expr
+    pub rhs: Expr,
+    pub ty: Cell<TypeName>
 }
 
 impl BinaryExpr
 {
     pub fn new(op: Binop, lhs: Expr, rhs: Expr) -> Expr {
-        Expr::Binary(Box::new( BinaryExpr { op: op, lhs: lhs, rhs: rhs } ))
+        Expr::Binary(Box::new( BinaryExpr { op: op, lhs: lhs, rhs: rhs, ty: Cell::new(TypeName::VOID) } ))
     }
 }
 
@@ -218,13 +223,14 @@ impl BinaryExpr
 pub struct CallExpr
 {
     pub name: String,
-    pub args: Vec<Expr>
+    pub args: Vec<Expr>,
+    pub ty: Cell<TypeName>
 }
 
 impl CallExpr
 {
     pub fn new(name: String, args: Vec<Expr>) -> Expr {
-        Expr::Call(Box::new(CallExpr { name: name, args: args }))
+        Expr::Call(Box::new(CallExpr { name: name, args: args, ty: Cell::new(TypeName::VOID) }))
     }
 }
 
@@ -232,13 +238,14 @@ impl CallExpr
 pub struct AssignExpr
 {
     pub name: String,
-    pub expr: Expr
+    pub expr: Expr,
+    pub ty: Cell<TypeName>
 }
 
 impl AssignExpr
 {
     pub fn new(name: String, expr: Expr) -> Expr {
-        Expr::Assign(Box::new(AssignExpr { name: name, expr: expr }))
+        Expr::Assign(Box::new(AssignExpr { name: name, expr: expr, ty: Cell::new(TypeName::VOID) }))
     }
 }
 
@@ -271,12 +278,13 @@ impl NumLitExpr
 #[derive(Debug)]
 pub struct IdExpr
 {
-    pub name: String
+    pub name: String,
+    pub ty: Cell<TypeName>
 }
 
 impl IdExpr
 {
     pub fn new(name: String) -> Expr {
-        Expr::Id(Box::new(IdExpr { name: name }))
+        Expr::Id(Box::new(IdExpr { name: name, ty: Cell::new(TypeName::VOID) }))
     }
 }
