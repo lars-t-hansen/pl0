@@ -3,8 +3,8 @@ use env::{GlobalEnv, LocalEnv};
 
 /*
  * Nodes are structs: { op, prev, next }, allocated from a pool.  Prev and next are
- * indices in that pool.  Values (`Val`) are indices of nodes in that pool.  We
- * keep these as structs so that we can add data to nodes later without having to
+ * indices in that pool.  Values (`Val`) are also indices of nodes in that pool.  We
+ * keep nodes as structs so that we can add data to nodes later without having to
  * update all the ops, which are tagged unions.
  * 
  * Functions are graphs of basic blocks.  A basic block is a sequence of nodes starting
@@ -12,19 +12,10 @@ use env::{GlobalEnv, LocalEnv};
  * two outgoing edges, one for taken, the other for untaken.  Return has none.  Jump has
  * one.  The outgoing edges are indices of nodes that must all be Block nodes.
  *
+ * There are distinguished first and last blocks in each function.
+ *
  * Labels must be data with identity probably?
  */
-
-//
-// Operations are structs: { prev, next, op } where prev and next are references
-// to operations and the op is an enum.
-//
-// Operations are named by integer indices into a vector that serves as a heap
-// for all operations.  This doesn't feel great.  Maybe macros or helper functions
-// will make it feel OK.
-//
-// Operations are collected in basic blocks.  No phi nodes are needed at this stage
-// because we have updatable locals, not "values" for the locals.  This will change.
 
 /*
 Name(0) => fib
@@ -181,54 +172,6 @@ struct GenFun
 
 impl GenFun
 {
-    fn next_int(&mut self) -> u32 {
-        let x = self.ints;
-        self.ints += 1;
-        return x;
-    }
-
-    fn next_num(&mut self) -> u32 {
-        let x = self.nums;
-        self.nums += 1;
-        return x;
-    }
-
-    fn jcc(&mut self, cond:OB, v:Val, if_true:Label, if_false:Label) {
-        self.add_instr(Op::Jcc(cond, v, if_true, if_false));
-        self.new_block();
-    }
-
-    fn bind_label() {
-        // we must be at the beginning of a block (ie self.last must be a Block op)
-    }
-    
-    fn nop(&mut self) {
-        self.add_instr(Op::Nop);
-    }
-
-    fn notreached(&mut self) {
-        self.add_instr(Op::Notreached);
-    }
-
-    fn incoming(&mut self, arg: Arg) -> Val {
-        return self.add_instr(Op::Incoming(Arg));
-    }
-    
-    fn outgoing(&mut self, arg: Arg, v: Val) {
-        self.add_instr(Op::Outgoing(Arg));
-    }
-
-    // Not obviously correct...  next and prev can be cells.
-
-    fn op2(&mut self, op:O2, rs1:Val, rs2:Val) -> Val {
-        let idx = self.ir.len();
-        self.ir.push(IR { op: op, prev_: 0, next_: -1 });
-        let node = &mut self.ir[idx];
-        node.prev_ = self.last_;
-        let last = &mut self.ir[self.last_];
-        last.next_ = idx;
-    }
-           
     fn gen_function(&mut self, fn:&FunDefn) {
         let first_block = self.new_block();
 
@@ -247,6 +190,7 @@ impl GenFun
                     let v = self.incoming(Arg::N(k));
                     self.setlocal(Local::N(idx), v);
                 }
+                _ => unreachable!()
             }
         }
 
@@ -268,16 +212,16 @@ impl GenFun
             &Stmt::If(ref s) => self.gen_if(s),
             &Stmt::Return(ref s) => self.gen_return(s),
             &Stmt::While(ref s) => self.gen_while(s),
-            &Stmt::Var(ref s) => self.define_local(s)
+            &Stmt::Var(ref s) => self.gen_vardefn(s)
         }
     }
 
     fn gen_block(&mut self, stmt:&Box<BlockStmt>) {
-        self.push_scope();
+        self.locals.push();
         for s in &stmt.phrases {
             self.gen_stmt(&s);
         }
-        self.pop_scope();
+        self.locals.pop();
     }
 
     fn gen_if(&mut self, stmt: &Box<IfStmt>) {
@@ -320,6 +264,10 @@ impl GenFun
         }
     }
 
+    fn gen_vardefn(&mut self, stmt:&Box<VarDefnStmt>) {
+        // FIXME
+    }
+    
     fn gen_expr(&self, env:&Env, e:&Expr, out:&mut IR) -> Val {
         match *e {
             Expr::Unary(ref u) => {
@@ -402,4 +350,53 @@ impl GenFun
             }
         }
     }
+
+    fn next_int(&mut self) -> u32 {
+        let x = self.ints;
+        self.ints += 1;
+        return x;
+    }
+
+    fn next_num(&mut self) -> u32 {
+        let x = self.nums;
+        self.nums += 1;
+        return x;
+    }
+
+    fn jcc(&mut self, cond:OB, v:Val, if_true:Label, if_false:Label) {
+        self.add_instr(Op::Jcc(cond, v, if_true, if_false));
+        self.new_block();
+    }
+
+    fn bind_label() {
+        // we must be at the beginning of a block (ie self.last must be a Block op)
+    }
+    
+    fn nop(&mut self) {
+        self.add_instr(Op::Nop);
+    }
+
+    fn notreached(&mut self) {
+        self.add_instr(Op::Notreached);
+    }
+
+    fn incoming(&mut self, arg: Arg) -> Val {
+        return self.add_instr(Op::Incoming(Arg));
+    }
+    
+    fn outgoing(&mut self, arg: Arg, v: Val) {
+        self.add_instr(Op::Outgoing(Arg));
+    }
+
+    // Not obviously correct...  next and prev can be cells.
+
+    fn op2(&mut self, op:O2, rs1:Val, rs2:Val) -> Val {
+        let idx = self.ir.len();
+        self.ir.push(IR { op: op, prev_: 0, next_: -1 });
+        let node = &mut self.ir[idx];
+        node.prev_ = self.last_;
+        let last = &mut self.ir[self.last_];
+        last.next_ = idx;
+    }
+           
 }

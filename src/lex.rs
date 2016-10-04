@@ -2,15 +2,18 @@ use std::char;
 use std::fs::File;
 use std::io::{Read, Bytes};
 
-pub struct Lex
+use names::{Name, NameTable};
+
+pub struct Lex<'a>
 {
     lineno: u32,
     ungotten: bool,
     ungot: char,
-    input: Bytes<File>
+    input: Bytes<File>,
+    names: &'a mut NameTable
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Token
 {
     SEMI,
@@ -37,7 +40,7 @@ pub enum Token
     NOT,
     INTLIT(i64),
     NUMLIT(f64),
-    IDENT(String),
+    IDENT(Name),
     ELSE,
     FN,
     INT,
@@ -52,14 +55,15 @@ pub enum Token
 
 const EOICHAR : char = '\0';
 
-impl Lex
+impl<'a> Lex<'a>
 {
-    pub fn new(input: File) -> Lex {
+    pub fn new(names:&'a mut NameTable, input: File) -> Lex<'a> {
         Lex {
             lineno: 1,
             ungotten: false,
             ungot: ' ',
-            input: input.bytes()
+            input: input.bytes(),
+            names: names
         }
     }
 
@@ -103,7 +107,7 @@ impl Lex
                         "num"    => Token::NUM,
                         "return" => Token::RETURN,
                         "while"  => Token::WHILE,
-                        _        => Token::IDENT(s)
+                        _        => Token::IDENT(self.names.add(&s))
                     }
                 } else {
                     self.bad()

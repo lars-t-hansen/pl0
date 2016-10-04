@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use names::Name;
+
 // An environment maps a name to its denotation,
 // The form of the denotation is context-dependent, hence a parameter.
 
@@ -7,8 +9,8 @@ use std::collections::HashMap;
 
 pub struct GlobalEnv<Denotation>
 {
-    globals: HashMap<String, Denotation>,
-    externs: HashMap<String, Denotation>
+    globals: HashMap<Name, Denotation>,
+    externs: HashMap<Name, Denotation>
 }
 
 impl<Denotation: Clone> GlobalEnv<Denotation>
@@ -20,7 +22,7 @@ impl<Denotation: Clone> GlobalEnv<Denotation>
         }
     }
     
-    pub fn lookup(&self, name:&String) -> Option<Denotation> {
+    pub fn lookup(&self, name:&Name) -> Option<Denotation> {
         match self.globals.get(name) {
             Some(d) => Some(d.clone()),
             None => match self.externs.get(name) {
@@ -30,17 +32,17 @@ impl<Denotation: Clone> GlobalEnv<Denotation>
         }
     }
 
-    pub fn add_extern(&mut self, name:&String, b:Denotation) {
-        self.externs.insert(name.clone(), b);
+    pub fn add_extern(&mut self, name:&Name, b:Denotation) {
+        self.externs.insert(*name, b);
     }
 
-    pub fn add_global(&mut self, name:&String, b:Denotation) -> bool {
+    pub fn add_global(&mut self, name:&Name, b:Denotation) -> bool {
         match self.globals.get(name) {
             Some(_) => {
                 false
             }
             None => {
-                self.globals.insert(name.clone(), b);
+                self.globals.insert(*name, b);
                 true
             }
         }
@@ -52,25 +54,25 @@ impl<Denotation: Clone> GlobalEnv<Denotation>
 
 pub struct LocalEnv<Denotation>
 {
-    locals: Vec<Vec<(String, Denotation)>>
+    locals: Vec<Vec<(Name, Denotation)>>
 }
 
 impl<Denotation: Clone> LocalEnv<Denotation>
 {
     pub fn new() -> LocalEnv<Denotation> {
         LocalEnv {
-            locals: Vec::<Vec<(String, Denotation)>>::new(),
+            locals: Vec::<Vec<(Name, Denotation)>>::new(),
         }
     }
     
-    pub fn lookup(&self, name:&String) -> Option<Denotation> {
+    pub fn lookup(&self, name:&Name) -> Option<Denotation> {
         match self.lookup_(name) {
             Some((denotation, _)) => Some(denotation),
             None => None
         }
     }
 
-    pub fn add(&mut self, name:&String, denotation:Denotation) -> bool {
+    pub fn add(&mut self, name:&Name, denotation:Denotation) -> bool {
         match self.lookup_(name) {
             Some((_, level)) => {
                 if level == 0 {
@@ -79,11 +81,11 @@ impl<Denotation: Clone> LocalEnv<Denotation>
             }
             None => {}
         }
-        self.locals[0].push((name.clone(), denotation));
+        self.locals[0].push((*name, denotation));
         return true;
     }
 
-    fn lookup_(&self, name:&String) -> Option<(Denotation, i32)> {
+    fn lookup_(&self, name:&Name) -> Option<(Denotation, i32)> {
         let mut r = self.locals.len()-1;
         let mut level = 0;
         while r > 0 {
@@ -103,7 +105,7 @@ impl<Denotation: Clone> LocalEnv<Denotation>
     }
 
     pub fn push(&mut self) {
-        self.locals.push(Vec::<(String,Denotation)>::new());
+        self.locals.push(Vec::<(Name,Denotation)>::new());
     }
 
     pub fn pop(&mut self) {

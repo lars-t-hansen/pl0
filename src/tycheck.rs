@@ -1,6 +1,7 @@
 use ast::*;
 use env::{GlobalEnv, LocalEnv};
 use err::TypeErr;
+use names::{Name, NameTable};
 
 // We can split into local/global binding here to avoid
 // problems with cloning function signatures
@@ -23,14 +24,14 @@ pub type Res = Result<(), TypeErr>;
 
 type Env = GlobalEnv<Binding>;
 
-pub fn check_program(p:&Program) -> Res {
+pub fn check_program(names:&mut NameTable, p:&Program) -> Res {
     let mut env = Env::new();
-    try!(check_globals(p, &mut env));
+    try!(check_globals(names, p, &mut env));
     try!(check_functions(p, &env));
     Ok(())
 }
 
-fn check_globals(p:&Program, env:&mut Env) -> Res {
+fn check_globals(names:&mut NameTable, p:&Program, env:&mut Env) -> Res {
     for fd in &p.fns {
         let sign = Signature {
             ret: fd.ret,
@@ -46,9 +47,9 @@ fn check_globals(p:&Program, env:&mut Env) -> Res {
         }
     }
 
-    env.add_extern(&String::from("printi"),
+    env.add_extern(&names.add(&String::from("printi")),
                    Binding::Fn(Signature { ret: TypeName::VOID, formals: vec![TypeName::INT] }));
-    env.add_extern(&String::from("printn"),
+    env.add_extern(&names.add(&String::from("printn")),
                    Binding::Fn(Signature { ret: TypeName::VOID, formals: vec![TypeName::NUM] }));
 
     Ok(())
@@ -256,11 +257,11 @@ impl<'a> FnCheck<'a>
         }
     }
 
-    fn add_var(&mut self, name:&String, ty:TypeName) -> bool {
+    fn add_var(&mut self, name:&Name, ty:TypeName) -> bool {
         self.locals.add(name, Binding::Var(ty))
     }
 
-    fn lookup_var(&self, name:&String) -> Result<TypeName, TypeErr> {
+    fn lookup_var(&self, name:&Name) -> Result<TypeName, TypeErr> {
         match self.locals.lookup(name) {
             Some(Binding::Var(t)) => Ok(t),
             Some(_) => Err(error("Name must reference variable")),
@@ -271,7 +272,7 @@ impl<'a> FnCheck<'a>
         }
     }
 
-    fn lookup_fn(&self, name:&String) -> Result<Signature, TypeErr> {
+    fn lookup_fn(&self, name:&Name) -> Result<Signature, TypeErr> {
         match self.locals.lookup(name) {
             Some(_) => Err(error("Name must reference function")),
             None => match self.env.lookup(name) {

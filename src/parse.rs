@@ -2,14 +2,15 @@ use ast::*;
 use err::ParseErr;
 use lex::Lex;
 use lex::Token;
+use names::Name;
 
 pub fn parse(l:Lex) -> Result<Program, ParseErr> {
     Parse::new(l).parse()
 }
 
-struct Parse
+struct Parse<'a>
 {
-    l: Lex,
+    l: Lex<'a>,
     ungotten: bool,
     ungot: Token
 }
@@ -50,9 +51,9 @@ macro_rules! binop_left {
     }
 }
 
-impl Parse
+impl<'a> Parse<'a>
 {
-    fn new(l: Lex) -> Parse {
+    fn new(l: Lex<'a>) -> Parse<'a> {
         Parse {
             l: l,
             ungotten: false,
@@ -213,7 +214,7 @@ impl Parse
             let new_lhs =
                 match lhs {
                     Expr::Id(ref vref) => {
-                        AssignExpr::new(vref.name.clone(), rhs)
+                        AssignExpr::new(vref.name, rhs)
                     }
                     _ => {
                         return Err(self.error("Identifier required in assignment"));
@@ -284,7 +285,7 @@ impl Parse
 
     // Token stream
 
-    fn match_ident(&mut self) -> Result<String, ParseErr> {
+    fn match_ident(&mut self) -> Result<Name, ParseErr> {
         let t = self.next();
         match t {
             Token::IDENT(name) => Ok(name),
@@ -311,22 +312,18 @@ impl Parse
         }
     }
 
-    // TODO: The need to clone the token suggests a weakness in the token
-    // definition - the String in IDENT should be replaced by something
-    // copyable.
-
     fn peek(&mut self) -> Token {
         if self.ungotten {
-            return self.ungot.clone();
+            return self.ungot;
         }
         let t = self.next();
-        self.unget(t.clone());
+        self.unget(t);
         return t;
     }
 
     fn next(&mut self) -> Token {
         if self.ungotten {
-            let res = self.ungot.clone();
+            let res = self.ungot;
             self.ungotten = false;
             return res;
         }

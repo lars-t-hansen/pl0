@@ -1,5 +1,7 @@
 use std::cell::Cell;
 
+use names::Name;
+
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum TypeName
 {
@@ -25,7 +27,7 @@ impl Program
 #[derive(Debug)]
 pub struct FunDefn
 {
-    pub name: String,
+    pub name: Name,
     pub formals: Vec<VarDefn>,
     pub ret: TypeName,
     pub body: Stmt              // Always a BlockStmt
@@ -33,7 +35,7 @@ pub struct FunDefn
 
 impl FunDefn
 {
-    pub fn new(name: String, formals: Vec<VarDefn>, ret: TypeName, body: Stmt) -> FunDefn {
+    pub fn new(name: Name, formals: Vec<VarDefn>, ret: TypeName, body: Stmt) -> FunDefn {
         match body {
             Stmt::Block(_) => (),
             _              => assert!(false)
@@ -45,13 +47,13 @@ impl FunDefn
 #[derive(Debug)]
 pub struct VarDefn
 {
-    pub name: String,
+    pub name: Name,
     pub ty: TypeName
 }
 
 impl VarDefn
 {
-    pub fn new(name: String, ty: TypeName) -> VarDefn {
+    pub fn new(name: Name, ty: TypeName) -> VarDefn {
         VarDefn { name: name, ty: ty }
     }
 }
@@ -222,14 +224,14 @@ impl BinaryExpr
 #[derive(Debug)]
 pub struct CallExpr
 {
-    pub name: String,
+    pub name: Name,
     pub args: Vec<Expr>,
     pub ty: Cell<TypeName>
 }
 
 impl CallExpr
 {
-    pub fn new(name: String, args: Vec<Expr>) -> Expr {
+    pub fn new(name: Name, args: Vec<Expr>) -> Expr {
         Expr::Call(Box::new(CallExpr { name: name, args: args, ty: Cell::new(TypeName::VOID) }))
     }
 }
@@ -237,14 +239,14 @@ impl CallExpr
 #[derive(Debug)]
 pub struct AssignExpr
 {
-    pub name: String,
+    pub name: Name,
     pub expr: Expr,
     pub ty: Cell<TypeName>
 }
 
 impl AssignExpr
 {
-    pub fn new(name: String, expr: Expr) -> Expr {
+    pub fn new(name: Name, expr: Expr) -> Expr {
         Expr::Assign(Box::new(AssignExpr { name: name, expr: expr, ty: Cell::new(TypeName::VOID) }))
     }
 }
@@ -278,13 +280,13 @@ impl NumLitExpr
 #[derive(Debug)]
 pub struct IdExpr
 {
-    pub name: String,
+    pub name: Name,
     pub ty: Cell<TypeName>
 }
 
 impl IdExpr
 {
-    pub fn new(name: String) -> Expr {
+    pub fn new(name: Name) -> Expr {
         Expr::Id(Box::new(IdExpr { name: name, ty: Cell::new(TypeName::VOID) }))
     }
 }

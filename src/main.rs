@@ -50,15 +50,15 @@ Scoping for globals is global.
 
 Scoping for locals is from point-of-declaration to end of block.
 
-Functions can be overloaded in argument lists.(??)
+Functions can be overloaded in argument lists. [Not implemented]
 
 No auto coercion from int to num.
 
 ints are i64, nums are f64.
 
 Built-in functions:
-  print(int)
-  print(num)
+  printi(int)
+  printn(num)
   readi() -> int
   readn() -> num
 
@@ -68,17 +68,20 @@ mod ast;
 mod env;
 mod err;
 mod lex;
+mod names;
 mod parse;
 mod tycheck;
 
 use lex::Lex;
+use names::NameTable;
 use std::fs::File;
 
 fn main() {
     let f = File::open("fib.pl0").unwrap();
-    let prog = parse::parse(Lex::new(f)).unwrap();
+    let mut names = NameTable::new();
+    let prog = parse::parse(Lex::new(&mut names, f)).unwrap();
 
-    tycheck::check_program(&prog).unwrap();
+    tycheck::check_program(&mut names, &prog).unwrap();
 
     println!("{:?}", prog);
 }
