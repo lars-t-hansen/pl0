@@ -1,20 +1,10 @@
-use std::collections::HashMap;
-
 use ast::*;
+use env::{GlobalEnv, LocalEnv};
 
 #[derive(Debug)]
 pub struct TypeErr
 {
     pub msg: String
-}
-
-pub type Res = Result<(), TypeErr>;
-
-pub fn check_program(p:&Program) -> Res {
-    let mut check = TyCheck::new();
-    try!(check.program(p));
-    try!(check.functions(p));
-    Ok(())
 }
 
 // We can split into local/global binding here to avoid
@@ -30,140 +20,87 @@ struct Signature
 #[derive(Clone)]                // Clone necessary for lookup()
 enum Binding
 {
-    Unbound,
     Var(TypeName),
     Fn(Signature)
 }
 
-// "Scope" is misleading, this is really a more general function
-// checking context.
-//
-// `locals` could be a vector of hash tables, and for large local
-// scopes that will be important.  It could also be a hash table of
-// vectors, but that's more complicated.
+pub type Res = Result<(), TypeErr>;
 
-struct Scope
+type Env = GlobalEnv<Binding>;
+
+pub fn check_program(p:&Program) -> Res {
+    let mut env = Env::new();
+    try!(check_globals(p, &mut env));
+    try!(check_functions(p, &env));
+    Ok(())
+}
+
+fn check_globals(p:&Program, env:&mut Env) -> Res {
+    for fd in &p.fns {
+        let sign = Signature {
+            ret: fd.ret,
+            formals: fd.formals.iter().map(|x| x.ty).collect()
+        };
+        if !env.add_global(&fd.name, Binding::Fn(sign)) {
+            return Err(error("Duplicate global name"));
+        }
+    }
+    for vd in &p.vars {
+        if !env.add_global(&vd.name, Binding::Var(vd.ty)) {
+            return Err(error("Duplicate global name"));
+        }
+    }
+
+    env.add_extern(&String::from("printi"),
+                   Binding::Fn(Signature { ret: TypeName::VOID, formals: vec![TypeName::INT] }));
+    env.add_extern(&String::from("printn"),
+                   Binding::Fn(Signature { ret: TypeName::VOID, formals: vec![TypeName::NUM] }));
+
+    Ok(())
+}
+
+fn check_functions(p:&Program, env:&Env) -> Res {
+    for f in &p.fns {
+        let mut fun = FnCheck::new(env, f.ret);
+        try!(fun.check_function(&f));
+    }
+    Ok(())
+}
+
+fn error(msg: &str) -> TypeErr {
+    TypeErr { msg: String::from(msg) }
+}
+    
+struct FnCheck<'a>
 {
     ret:    TypeName,
-    locals: Vec<Vec<(String, Binding)>>
+    env:    &'a Env,
+    locals: LocalEnv<Binding>
 }
 
-impl Scope
+impl<'a> FnCheck<'a>
 {
-    fn new(ret:TypeName) -> Scope {
-        Scope {
+    fn new(env:&Env, ret:TypeName) -> FnCheck {
+        FnCheck {
             ret: ret,
-            locals: Vec::<Vec<(String, Binding)>>::new(),
+            env: env,
+            locals: LocalEnv::new()
         }
     }
     
-    // Returns the binding and the relative level.  Iff unbound then level is -1.
-
-    fn lookup(&self, name:&String) -> (Binding, i32) {
-        let mut r = self.locals.len()-1;
-        let mut level = 0;
-        while r > 0 {
-            let rib = &self.locals[r-1];
-            let mut i = 0;
-            while i < rib.len() {
-                let (ref bname, ref binding) = rib[i];
-                if bname == name {
-                    return (binding.clone(), level);
-                }
-                i = i+1;
-            }
-            r = r-1;
-            level = level + 1;
-        }
-        return (Binding::Unbound, -1);
-    }
-
-    fn add_var(&mut self, name:&String, ty:TypeName) {
-        self.locals[0].push((name.clone(), Binding::Var(ty)));
-    }
-
-    fn push(&mut self) {
-        self.locals.push(Vec::<(String,Binding)>::new());
-    }
-
-    fn pop(&mut self) {
-        self.locals.pop();
-    }        
-}
-
-// TyCheck is populated during the initial phase but is stable thereafter
-// and can be shared among mutliple threads, we hope.
-
-struct TyCheck
-{
-    globals: HashMap<String, Binding>,
-    externs: HashMap<String, Binding>
-}
-
-impl TyCheck
-{
-    fn new() -> TyCheck {
-        TyCheck {
-            globals: HashMap::<String, Binding>::new(),
-            externs: HashMap::<String, Binding>::new()
-        }
-    }
-    
-    fn program(&mut self, p:&Program) -> Res {
-        for fd in &p.fns {
-            match self.globals.get(&fd.name) {
-                None => {
-                    let formals = fd.formals.iter().map(|x| x.ty).collect();
-                    let sign = Signature { ret: fd.ret, formals: formals };
-                    self.globals.insert(fd.name.clone(), Binding::Fn(sign));
-                }
-                Some(_) => {
-                    return Err(self.error("Duplicate global definition"));
-                }
-            }
-        }
-        for vd in &p.vars {
-            match self.globals.get(&vd.name) {
-                None => {
-                    self.globals.insert(vd.name.clone(), Binding::Var(vd.ty));
-                }
-                Some(_) => {
-                    return Err(self.error("Duplicate global definition"));
-                }
-            }
-        }
-
-        self.externs.insert(String::from("printi"),
-                            Binding::Fn(Signature { ret: TypeName::VOID, formals: vec![TypeName::INT] }));
-        self.externs.insert(String::from("printn"),
-                            Binding::Fn(Signature { ret: TypeName::VOID, formals: vec![TypeName::NUM] }));
-
-        Ok(())
-    }
-
-    fn functions(&self, p:&Program) -> Res {
-        for f in &p.fns {
-            try!(self.check_function(&f));
-        }
-        Ok(())
-    }
-    
-    fn check_function(&self, f:&FunDefn) -> Res {
-        let mut scope = Scope::new(f.ret);
-
-        scope.push();
+    fn check_function(&mut self, f:&FunDefn) -> Res {
+        self.locals.push();
         for vd in &f.formals {
-            let (_, level) = scope.lookup(&vd.name);
-            if level != -1 {
-                return Err(self.error("Function parameter names must be distinct"));
+            if !self.add_var(&vd.name, vd.ty) {
+                return Err(error("Function parameter names must be distinct"));
             }
-            scope.add_var(&vd.name, vd.ty);
         }
         
-        let returns = try!(self.check_stmt(&mut scope, &f.body));
+        let returns = try!(self.check_stmt(&f.body));
         if f.ret != TypeName::VOID && !returns {
-            return Err(self.error("Function must return a value"));
+            return Err(error("Function must return a value"));
         }
+        self.locals.pop();
 
         Ok(())
     }
@@ -171,72 +108,69 @@ impl TyCheck
     // The statement checkers return true if the statement always executes
     // a return statement.
 
-    fn check_stmt(&self, scope:&mut Scope, stmt:&Stmt) -> Result<bool, TypeErr> {
+    fn check_stmt(&mut self, stmt:&Stmt) -> Result<bool, TypeErr> {
         match *stmt {
-            Stmt::Block(ref s) => self.check_block(scope, s),
+            Stmt::Block(ref s) => self.check_block(s),
             Stmt::Expr(ref s) => {
-                try!(self.check_expr(scope, &s.expr));
+                try!(self.check_expr(&s.expr));
                 Ok(false)
             }
-            Stmt::If(ref s) => self.check_if(scope, s),
-            Stmt::Return(ref s) => self.check_return(scope, s),
-            Stmt::While(ref s) => self.check_while(scope, s),
+            Stmt::If(ref s) => self.check_if(s),
+            Stmt::Return(ref s) => self.check_return(s),
+            Stmt::While(ref s) => self.check_while(s),
             Stmt::Var(ref s) => {
-                // Don't need to consider global scopes here.
-                let (_, level) = scope.lookup(&s.defn.name);
-                if level == 0 {
-                    return Err(self.error("Binding already exists"));
-                }
-                scope.add_var(&s.defn.name, s.defn.ty);
+                if !self.add_var(&s.defn.name, s.defn.ty) {
+                    return Err(error("Binding already exists in this scope"));
+                }                    
                 Ok(false)
             }
         }
     }
 
-    fn check_block(&self, scope:&mut Scope, stmt:&Box<BlockStmt>) -> Result<bool, TypeErr> {
-        scope.push();
+    fn check_block(&mut self, stmt:&Box<BlockStmt>) -> Result<bool, TypeErr> {
+        self.locals.push();
         let mut res = false;
         for s in &stmt.phrases {
             // Once a statement returns for sure, we're going to return for sure.
             // We check the rest but they don't matter.
             //
             // TODO: Warn about dead code?
-            res = res || try!(self.check_stmt(scope, &s));
+            res = res || try!(self.check_stmt(&s));
         }
-        scope.pop();
+        self.locals.pop();
         Ok(res)
     }
 
-    fn check_if(&self, scope:&mut Scope, stmt:&Box<IfStmt>) -> Result<bool, TypeErr> {
-        let t = try!(self.check_expr(scope, &stmt.test));
+    fn check_if(&mut self, stmt:&Box<IfStmt>) -> Result<bool, TypeErr> {
+        let t = try!(self.check_expr(&stmt.test));
         try!(self.check_int(t));
         match &stmt.alternate {
             &None => {
-                try!(self.check_stmt(scope, &stmt.consequent));
+                try!(self.check_stmt(&stmt.consequent));
                 Ok(false)
             }
             &Some(ref alternate) => {
-                let a = try!(self.check_stmt(scope, &stmt.consequent));
-                let b = try!(self.check_stmt(scope, alternate));
+                let a = try!(self.check_stmt(&stmt.consequent));
+                let b = try!(self.check_stmt(alternate));
                 Ok(a && b)
             }
         }
     }
     
-    fn check_while(&self, scope:&mut Scope, stmt:&Box<WhileStmt>) -> Result<bool, TypeErr> {
-        let t = try!(self.check_expr(scope, &stmt.test));
+    fn check_while(&mut self, stmt:&Box<WhileStmt>) -> Result<bool, TypeErr> {
+        let t = try!(self.check_expr(&stmt.test));
         try!(self.check_int(t));
-        try!(self.check_stmt(scope, &stmt.body));
+        try!(self.check_stmt(&stmt.body));
         Ok(false)
     }
 
-    fn check_return(&self, scope:&mut Scope, stmt:&Box<ReturnStmt>) -> Result<bool, TypeErr> {
+    fn check_return(&mut self, stmt:&Box<ReturnStmt>) -> Result<bool, TypeErr> {
         let t = 
             match stmt.expr {
-                Some(ref e) => try!(self.check_expr(scope, e)),
+                Some(ref e) => try!(self.check_expr(e)),
                 None => TypeName::VOID
             };
-        try!(self.check_same(scope.ret, t));
+        try!(self.check_same(self.ret, t));
         stmt.ty.set(t);
         Ok(true)
     }
@@ -244,10 +178,10 @@ impl TyCheck
     // check_expr may store the expression type in a node-specific way, to use
     // for ir generation, and always return the type.
     
-    fn check_expr(&self, scope:&mut Scope, e:&Expr) -> Result<TypeName, TypeErr> {
+    fn check_expr(&mut self, e:&Expr) -> Result<TypeName, TypeErr> {
         match *e {
             Expr::Unary(ref u) => {
-                let t = try!(self.check_expr(scope, &u.expr));
+                let t = try!(self.check_expr(&u.expr));
                 match u.op {
                     Unop::Negate => {
                         try!(self.check_int_or_num(t));
@@ -269,8 +203,8 @@ impl TyCheck
                 Ok(u.ty.get())
             }
             Expr::Binary(ref b) => {
-                let tl = try!(self.check_expr(scope, &b.lhs));
-                let tr = try!(self.check_expr(scope, &b.rhs));
+                let tl = try!(self.check_expr(&b.lhs));
+                let tr = try!(self.check_expr(&b.rhs));
                 match b.op {
                     Binop::Add | Binop::Subtract | Binop::Multiply | Binop::Divide | Binop::Modulo => {
                         try!(self.check_int_or_num(tl));
@@ -294,20 +228,20 @@ impl TyCheck
                 Ok(b.ty.get())
             }
             Expr::Assign(ref a) => {
-                let tl = try!(self.lookup_var(scope, &a.name));
-                let tr = try!(self.check_expr(scope, &a.expr));
+                let tl = try!(self.lookup_var(&a.name));
+                let tr = try!(self.check_expr(&a.expr));
                 try!(self.check_same(tl, tr));
                 a.ty.set(tl);
                 Ok(tl)
             }
             Expr::Call(ref c) => {
                 // FIXME: allow overloaded functions
-                let sign = try!(self.lookup_fn(scope, &c.name));
+                let sign = try!(self.lookup_fn(&c.name));
                 if sign.formals.len() != c.args.len() {
-                    return Err(self.error("Wrong number of arguments"));
+                    return Err(error("Wrong number of arguments"));
                 }
                 for k in 0..c.args.len() {
-                    let ta = try!(self.check_expr(scope, &c.args[k]));
+                    let ta = try!(self.check_expr(&c.args[k]));
                     try!(self.check_same(ta, sign.formals[k]));
                 }
                 c.ty.set(sign.ret);
@@ -320,51 +254,34 @@ impl TyCheck
                 Ok(TypeName::NUM)
             }
             Expr::Id(ref v) => {
-                let t = try!(self.lookup_var(scope, &v.name));
+                let t = try!(self.lookup_var(&v.name));
                 v.ty.set(t);
                 Ok(t)
             }
         }
     }
 
-    fn lookup_var(&self, scope:&Scope, name:&String) -> Result<TypeName, TypeErr> {
-        let (probe, _) = scope.lookup(name);
-        match probe {
-            Binding::Var(t) => Ok(t),
-            Binding::Fn(_) => Err(self.error("Name must reference variable")),
-            Binding::Unbound => {
-                match self.globals.get(name) {
-                    Some(&Binding::Var(t)) => Ok(t),
-                    Some(_) => Err(self.error("Name must reference variable")),
-                    None => {
-                        match self.externs.get(name) {
-                            Some(&Binding::Var(t)) => Ok(t),
-                            Some(_) => Err(self.error("Name must reference variable")),
-                            None => Err(self.error("Unbound variable"))
-                        }
-                    }
-                }
+    fn add_var(&mut self, name:&String, ty:TypeName) -> bool {
+        self.locals.add(name, Binding::Var(ty))
+    }
+
+    fn lookup_var(&self, name:&String) -> Result<TypeName, TypeErr> {
+        match self.locals.lookup(name) {
+            Some(Binding::Var(t)) => Ok(t),
+            Some(_) => Err(error("Name must reference variable")),
+            None => match self.env.lookup(name) {
+                Some(Binding::Var(t)) => Ok(t),
+                Some(_) | None => Err(error("Name must reference variable")),
             }
         }
     }
 
-    fn lookup_fn(&self, scope:&Scope, name:&String) -> Result<Signature, TypeErr> {
-        let (probe, _) = scope.lookup(name);
-        match probe {
-            Binding::Fn(s) => Ok(s),
-            Binding::Var(_) => Err(self.error("Name must reference function")),
-            Binding::Unbound => {
-                match self.globals.get(name) {
-                    Some(&Binding::Fn(ref s)) => Ok(s.clone()),
-                    Some(_) => Err(self.error("Name must reference function")),
-                    None => {
-                        match self.externs.get(name) {
-                            Some(&Binding::Fn(ref s)) => Ok(s.clone()),
-                            Some(_) => Err(self.error("Name must reference function")),
-                            None => Err(self.error("Unbound function"))
-                        }
-                    }
-                }
+    fn lookup_fn(&self, name:&String) -> Result<Signature, TypeErr> {
+        match self.locals.lookup(name) {
+            Some(_) => Err(error("Name must reference function")),
+            None => match self.env.lookup(name) {
+                Some(Binding::Fn(ref s)) => Ok(s.clone()),
+                Some(_) | None => Err(error("Name must reference function")),
             }
         }
     }
@@ -372,29 +289,25 @@ impl TyCheck
     fn check_int_or_num(&self, t:TypeName) -> Res {
         match t {
             TypeName::INT | TypeName::NUM => Ok(()),
-            _ => Err(self.error("Int or Num type required"))
+            _ => Err(error("Int or Num type required"))
         }
     }
 
     fn check_int(&self, t:TypeName) -> Res {
         match t {
             TypeName::INT => Ok(()),
-            _ => Err(self.error("Int type required"))
+            _ => Err(error("Int type required"))
         }
     }
 
     fn check_num(&self, t:TypeName) -> Res {
         match t {
             TypeName::NUM => Ok(()),
-            _ => Err(self.error("Num type required"))
+            _ => Err(error("Num type required"))
         }
     }
 
     fn check_same(&self, tl:TypeName, tr:TypeName) -> Res {
-        if tl == tr { Ok(()) } else { Err(self.error("Types must be equal")) }
-    }
-    
-    fn error(&self, msg: &str) -> TypeErr {
-        TypeErr { msg: String::from(msg) }
+        if tl == tr { Ok(()) } else { Err(error("Types must be equal")) }
     }
 }

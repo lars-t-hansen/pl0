@@ -175,6 +175,9 @@ struct GenFun
     scope: ... // Share this with tycheck maybe?
 }
 
+// Env maps name to local number within a function.  For globals,
+// we just reuse the name.  So we need to distinguish the two kinds.
+
 impl GenFun
 {
     fn next_int(&mut self) -> u32 {
