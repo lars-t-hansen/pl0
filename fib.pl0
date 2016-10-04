@@ -1,12 +1,9 @@
 fn main() {
-    print(fib(10));
+    printi(fib(10));
 }
 
 fn fib(int n) -> int {
     if (n < 2)
         return n;
     return fib(n-1) + fib(n-2);
-}
-
-fn print(int n) {
 }
