@@ -1,4 +1,5 @@
 use ast::*;
+use env::{GlobalEnv, LocalEnv};
 
 /*
  * Nodes are structs: { op, prev, next }, allocated from a pool.  Prev and next are

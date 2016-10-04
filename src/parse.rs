@@ -1,12 +1,7 @@
 use ast::*;
+use err::ParseErr;
 use lex::Lex;
 use lex::Token;
-
-#[derive(Debug)]
-pub struct ParseErr
-{
-    pub msg: String
-}
 
 pub fn parse(l:Lex) -> Result<Program, ParseErr> {
     Parse::new(l).parse()

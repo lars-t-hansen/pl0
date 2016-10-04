@@ -1,11 +1,6 @@
 use ast::*;
 use env::{GlobalEnv, LocalEnv};
-
-#[derive(Debug)]
-pub struct TypeErr
-{
-    pub msg: String
-}
+use err::TypeErr;
 
 // We can split into local/global binding here to avoid
 // problems with cloning function signatures

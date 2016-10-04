@@ -66,6 +66,7 @@ Built-in functions:
 
 mod ast;
 mod env;
+mod err;
 mod lex;
 mod parse;
 mod tycheck;
