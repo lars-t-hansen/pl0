@@ -20,7 +20,7 @@ pub fn check_program(p:&Program) -> Res {
 // We can split into local/global binding here to avoid
 // problems with cloning function signatures
 
-#[derive(Clone, Debug)]                // TODO: Bad, but not sure it's used (only reachable from globals)
+#[derive(Clone, Debug)]         // TODO: Bad, really - how to avoid?
 struct Signature
 {
     formals: Vec<TypeName>,
@@ -133,7 +133,10 @@ impl TyCheck
             }
         }
 
-        // FIXME: populate the externs
+        self.externs.insert(String::from("printi"),
+                            Binding::Fn(Signature { ret: TypeName::VOID, formals: vec![TypeName::INT] }));
+        self.externs.insert(String::from("printn"),
+                            Binding::Fn(Signature { ret: TypeName::VOID, formals: vec![TypeName::NUM] }));
 
         Ok(())
     }
@@ -334,7 +337,11 @@ impl TyCheck
                     Some(&Binding::Var(t)) => Ok(t),
                     Some(_) => Err(self.error("Name must reference variable")),
                     None => {
-                        Err(self.error("Unimplemented")) // FIXME - go to extern
+                        match self.externs.get(name) {
+                            Some(&Binding::Var(t)) => Ok(t),
+                            Some(_) => Err(self.error("Name must reference variable")),
+                            None => Err(self.error("Unbound variable"))
+                        }
                     }
                 }
             }
@@ -351,7 +358,11 @@ impl TyCheck
                     Some(&Binding::Fn(ref s)) => Ok(s.clone()),
                     Some(_) => Err(self.error("Name must reference function")),
                     None => {
-                        Err(self.error("Unimplemented")) // FIXME - go to extern
+                        match self.externs.get(name) {
+                            Some(&Binding::Fn(ref s)) => Ok(s.clone()),
+                            Some(_) => Err(self.error("Name must reference function")),
+                            None => Err(self.error("Unbound function"))
+                        }
                     }
                 }
             }
