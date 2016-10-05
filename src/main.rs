@@ -32,7 +32,7 @@ expr ::= expr ("+" | "-" | "*" | "/" | "%" | "&&" | "||" | "==" | "!=" | ">" | "
        | "(" expr ")"
 literal ::= intlit | floatlit
 
-operator precedence high to low
+operator precedence and associativity high to low
 
 ! -              right
 * / %            left
@@ -46,27 +46,39 @@ operator precedence high to low
 
 Semantics.
 
-Distinguished function 'main' without arguments.
+- Distinguished function 'main' without arguments.
+- Ints double as booleans, but nums do not.
+- Scoping for globals is whole-program.
+- Scoping for parameters is from point-of-declaration to end of body.
+- Scoping for locals is from point-of-declaration to end of block.
+- Functions can be overloaded in argument lists. [Not implemented]
+- No auto coercion from int to num or vice versa.
+- Ints are i64, nums are f64.
 
-Ints double as booleans, but nums do not.
 
-Scoping for globals is whole-program.
-
-Scoping for parameters is from point-of-declaration to end of body.
-
-Scoping for locals is from point-of-declaration to end of block.
-
-Functions can be overloaded in argument lists. [Not implemented]
-
-No auto coercion from int to num or vice versa.
-
-Ints are i64, nums are f64.
+Library.
 
 Built-in functions (for now):
+
   printi(int)
   printn(num)
   readi() -> int
   readn() -> num
+
+
+Future.
+
+We should add read and write statements:
+
+stmt ::= ...
+       | write (stringlit | expr | ",")+ ";"
+       | read id ("," id)* ";"
+
+where a comma in the write format emits a space, a la awk, but commas
+are optional.
+
+
+We should add simple one-dimensional arrays.
 
 */
 
@@ -81,6 +93,23 @@ mod tycheck;
 use lex::Lex;
 use names::NameTable;
 use std::fs::File;
+
+// TODO: The type checker forks off threads to check all functions,
+// but then it waits for all those to complete before it goes on to IR
+// generation.  This is not ideal, because IR generation can also be
+// parallelized, as can per-function optimization and code generation.
+// (Inlining is somewhat dependent on type checking completing first
+// but might not require a centralized "we are done" point.)
+//
+// We might split this up so that type checking is exposed in two
+// levels, global and per-function, and then we could fork off threads
+// here to do type checking, ir generation, optimization, and code
+// generation per function.  We could also manage worker pools etc
+// here.
+//
+// If we do that, though, an error in one type checking thread should
+// cause other threads to stop computing fairly quickly (eg, after
+// type checking or asap thereafter).
 
 fn main() {
     // TODO: get the program name from a command line argument.
