@@ -79,9 +79,9 @@ use std::fs::File;
 fn main() {
     let f = File::open("fib.pl0").unwrap();
     let mut names = NameTable::new();
-    let prog = parse::parse(Lex::new(&mut names, f)).unwrap();
+    let mut prog = parse::parse(Lex::new(&mut names, f)).unwrap();
 
-    tycheck::check_program(&mut names, &prog).unwrap();
+    tycheck::check_program(&mut names, &mut prog).unwrap();
 
     println!("{:?}", prog);
 }

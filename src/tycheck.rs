@@ -3,17 +3,17 @@ use env::{GlobalEnv, LocalEnv};
 use err::TypeErr;
 use names::{Name, NameTable};
 
-// We can split into local/global binding here to avoid
-// problems with cloning function signatures
+use std::sync::Arc;
+use std::thread;
 
-#[derive(Clone, Debug)]         // TODO: Bad, really - how to avoid?
+#[derive(Clone)]
 struct Signature
 {
     formals: Vec<TypeName>,
     ret: TypeName
 }
 
-#[derive(Clone)]                // Clone necessary for lookup()
+#[derive(Clone)]
 enum Binding
 {
     Var(TypeName),
@@ -22,16 +22,17 @@ enum Binding
 
 pub type Res = Result<(), TypeErr>;
 
-type Env = GlobalEnv<Binding>;
+type Env = Arc<Box<GlobalEnv<Binding>>>;
 
-pub fn check_program(names:&mut NameTable, p:&Program) -> Res {
-    let mut env = Env::new();
+pub fn check_program(names:&mut NameTable, p:&mut Program) -> Res {
+    let mut env = Box::new(GlobalEnv::new());
     try!(check_globals(names, p, &mut env));
-    try!(check_functions(p, &env));
+    let envrc = Arc::new(env);
+    try!(check_functions(p, &envrc));
     Ok(())
 }
 
-fn check_globals(names:&mut NameTable, p:&Program, env:&mut Env) -> Res {
+fn check_globals(names:&mut NameTable, p:&mut Program, env:&mut Box<GlobalEnv<Binding>>) -> Res {
     for fd in &p.fns {
         let sign = Signature {
             ret: fd.ret,
@@ -55,36 +56,62 @@ fn check_globals(names:&mut NameTable, p:&Program, env:&mut Env) -> Res {
     Ok(())
 }
 
-fn check_functions(p:&Program, env:&Env) -> Res {
-    for f in &p.fns {
-        let mut fun = FnCheck::new(env, f.ret);
-        try!(fun.check_function(&f));
+// For expository purposes we check each function individually in a
+// separate thread with a shared global environment for all the
+// threads.
+
+fn check_functions(p:&mut Program, env:&Env) -> Res {
+    let mut threads = Vec::new();
+
+    for f in p.fns.drain(..) {
+        let mut fun = FnCheck::new(env.clone(), f.ret);
+        threads.push(thread::spawn(move || -> Result<FunDefn, TypeErr> {
+            fun.check_function(f)
+        }));
     }
-    Ok(())
+
+    let mut errors = 0;
+    for t in threads.drain(..) {
+        match t.join() {
+            Err(e) => {
+                println!("internal error: {:?}", e);
+                errors += 1;
+            }
+            Ok(Err(e)) => {
+                println!("type error: {}", e.msg);
+                errors += 1;
+            }
+            Ok(Ok(f)) => {
+                p.fns.push(f);
+            }
+        }
+    }
+
+    if errors > 0 { Err(error("Type checking failed")) } else { Ok(()) }
 }
 
 fn error(msg: &str) -> TypeErr {
     TypeErr { msg: String::from(msg) }
 }
     
-struct FnCheck<'a>
+struct FnCheck
 {
     ret:    TypeName,
-    env:    &'a Env,
+    env:    Env,
     locals: LocalEnv<Binding>
 }
 
-impl<'a> FnCheck<'a>
+impl FnCheck
 {
-    fn new(env:&Env, ret:TypeName) -> FnCheck {
+    fn new(env:Env, ret:TypeName) -> FnCheck {
         FnCheck {
             ret: ret,
-            env: env,
+            env: env.clone(),
             locals: LocalEnv::new()
         }
     }
     
-    fn check_function(&mut self, f:&FunDefn) -> Res {
+    fn check_function(&mut self, f:FunDefn) -> Result<FunDefn, TypeErr> {
         self.locals.push();
         for vd in &f.formals {
             if !self.add_var(&vd.name, vd.ty) {
@@ -98,7 +125,7 @@ impl<'a> FnCheck<'a>
         }
         self.locals.pop();
 
-        Ok(())
+        Ok(f)
     }
 
     // The statement checkers return true if the statement always executes
