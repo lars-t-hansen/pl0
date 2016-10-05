@@ -1,13 +1,14 @@
+/* My Second Rust Program */
+
+/* A compiler for a toy language.  This builds trees and implements
+ * some basic optimizations to get a sense for how Rust handles graph
+ * structures and traversal and text generation.  The output is x64
+ * assembler.  We use threads for concurrency when we can.
+ */
+
 /*
-Simple compiler.  We want to build trees and implement some basic
-optimizations to get a sense for how Rust handles graph structures and
-traversal and text generation.  The output should be x64 assembler.
 
-Obvious optimization is register allocation.
-*/
-
-
-/*
+Syntax.
 
 prog ::= (var | fn)*
 var ::= decl ";"
@@ -42,21 +43,26 @@ operator precedence high to low
 ||               left
 =                right
 
-distinguished function 'main' without arguments.
 
-ints double as booleans, but nums do not.
+Semantics.
 
-Scoping for globals is global.
+Distinguished function 'main' without arguments.
+
+Ints double as booleans, but nums do not.
+
+Scoping for globals is whole-program.
+
+Scoping for parameters is from point-of-declaration to end of body.
 
 Scoping for locals is from point-of-declaration to end of block.
 
 Functions can be overloaded in argument lists. [Not implemented]
 
-No auto coercion from int to num.
+No auto coercion from int to num or vice versa.
 
-ints are i64, nums are f64.
+Ints are i64, nums are f64.
 
-Built-in functions:
+Built-in functions (for now):
   printi(int)
   printn(num)
   readi() -> int
@@ -77,6 +83,8 @@ use names::NameTable;
 use std::fs::File;
 
 fn main() {
+    // TODO: get the program name from a command line argument.
+
     let f = File::open("fib.pl0").unwrap();
     let mut names = NameTable::new();
     let mut prog = parse::parse(Lex::new(&mut names, f)).unwrap();
