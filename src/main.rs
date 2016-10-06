@@ -85,6 +85,8 @@ We should add simple one-dimensional arrays.
 mod ast;
 mod env;
 mod err;
+mod ir;
+mod irgen;
 mod lex;
 mod names;
 mod parse;
@@ -121,4 +123,8 @@ fn main() {
     tycheck::check_program(&mut names, &mut prog).unwrap();
 
     println!("{:?}", prog);
+
+    let ir = irgen::program(&mut prog);
+
+    println!("{:?}", ir);
 }

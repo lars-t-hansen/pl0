@@ -187,7 +187,7 @@ impl UnaryExpr
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Binop
 {
     Add,
