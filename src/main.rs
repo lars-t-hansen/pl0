@@ -80,6 +80,11 @@ are optional.
 
 We should add simple one-dimensional arrays.
 
+
+We should add some implicit coercions, maybe int->num, since they
+will (usually) require updating the ast during type checking by
+inserting coercion operations.  Or something.
+
 */
 
 mod ast;

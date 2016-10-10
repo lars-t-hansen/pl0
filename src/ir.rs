@@ -49,6 +49,9 @@ impl Program
 #[derive(Debug)]
 pub struct Fun
 {
+    // Here, we probably want a map from local number to a Name, for
+    // both int and num.  In this map, temps generated for whatever
+    // purpose will appear as Name::T(k).
     pub entry_block: Label,
     pub exit_block: Label,
     pub ir: Vec<IR>
@@ -70,6 +73,8 @@ pub struct IR {
     pub prev: Val,
     pub next: Val
 }
+
+pub const NULL : u32 = 911911;  // A `prev` or `next` link without a target (visually distinct)
 
 pub type Val = u32;             // A Val is a reference to an IR node in the IR node heap
 
@@ -130,13 +135,13 @@ pub enum Arg {
     N(u32)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Local {
     I(u32),
     N(u32)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Global {
     I(Name),
     N(Name),
