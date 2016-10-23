@@ -112,6 +112,7 @@ mod tycheck;
 
 use lex::Lex;
 use names::NameTable;
+
 use std::fs::File;
 
 // TODO: The type checker forks off threads to check all functions,
@@ -138,7 +139,9 @@ fn main() {
     let mut names = NameTable::new();
     let mut prog = parse::parse(Lex::new(&mut names, f)).unwrap();
 
-    tycheck::check_program(&mut names, &mut prog).unwrap();
+    let mut env = tycheck::new_env();
+    tycheck::check_program(&mut names, &mut prog, &mut env).unwrap();
+    tycheck::check_functions(&mut prog, &env).unwrap();
 
     println!("{:?}", prog);
 

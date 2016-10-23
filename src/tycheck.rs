@@ -22,17 +22,17 @@ enum Binding
 
 pub type Res = Result<(), TypeErr>;
 
-type Env = Arc<Box<GlobalEnv<Binding>>>;
+type EnvArc = Arc<Box<GlobalEnv<Binding>>>;
+pub struct Env(EnvArc);
 
-pub fn check_program(names:&mut NameTable, p:&mut Program) -> Res {
-    let mut env = Box::new(GlobalEnv::new());
-    try!(check_globals(names, p, &mut env));
-    let envrc = Arc::new(env);
-    try!(check_functions(p, &envrc));
-    Ok(())
+pub fn new_env() -> Env {
+    Env(Arc::new(Box::new(GlobalEnv::new())))
 }
 
-fn check_globals(names:&mut NameTable, p:&mut Program, env:&mut Box<GlobalEnv<Binding>>) -> Res {
+pub fn check_program(names:&mut NameTable, p:&mut Program, e:&mut Env) -> Res {
+    let &mut Env(ref mut envrc) = e;
+    let env = Arc::get_mut(envrc).unwrap();
+
     for fd in &p.fns {
         let sign = Signature {
             ret: fd.ret,
@@ -60,7 +60,8 @@ fn check_globals(names:&mut NameTable, p:&mut Program, env:&mut Box<GlobalEnv<Bi
 // separate thread with a shared global environment for all the
 // threads.
 
-fn check_functions(p:&mut Program, env:&Env) -> Res {
+pub fn check_functions(p:&mut Program, e:&Env) -> Res {
+    let &Env(ref env) = e;
     let mut threads = Vec::new();
 
     for f in p.fns.drain(..) {
@@ -97,13 +98,13 @@ fn error(msg: &str) -> TypeErr {
 struct FnCheck
 {
     ret:    TypeName,
-    env:    Env,
+    env:    EnvArc,
     locals: LocalEnv<Binding>
 }
 
 impl FnCheck
 {
-    fn new(env:Env, ret:TypeName) -> FnCheck {
+    fn new(env:EnvArc, ret:TypeName) -> FnCheck {
         FnCheck {
             ret: ret,
             env: env.clone(),
