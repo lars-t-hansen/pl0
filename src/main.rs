@@ -2,8 +2,12 @@
 
 /* A compiler for a toy language.  This builds trees and implements
  * some basic optimizations to get a sense for how Rust handles graph
- * structures and traversal and text generation.  The output is x64
- * assembler.  We use threads for concurrency when we can.
+ * structures and traversal and text generation.  The output should 
+ * perhaps be wasm, suitable for a web browser (but in that case,
+ * register allocation and saving of live values across calls are
+ * trivial, so it's an oversimplification).
+ *
+ * We use threads for concurrency in the compiler when we can.
  */
 
 /*
@@ -85,6 +89,15 @@ We should add some implicit coercions, maybe int->num, since they
 will (usually) require updating the ast during type checking by
 inserting coercion operations.  Or something.
 
+
+We should have a notion of "pub" functions that are exported to
+some ecosystem (in the wasm case).  In this case, "main" is
+merely an initialization function, and other pub functions can be
+called after main has returned.
+
+
+Global variables should be initializable with constant expressions,
+and local variables with arbitrary expressions.
 */
 
 mod ast;

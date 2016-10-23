@@ -1,50 +1,7 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use ast::*;
-use env::{GlobalEnv, LocalEnv};
-use names::{NameTable, Name};
-use ir;
-use ir::{Label, Op, O1, O2, OB, Val, Arg, IR, Local, Global, Lit};
-
-/*
-Name(0) => fib
-
-// Possibly better, types are implicit
-// Here next and prev are not shown but are really there
-// Block and EndBlock can carry more information
-
-// Here we number intra-block instead of linearly but this is just notation
-
-0/0: { op: Block(0) }
-0/1: { op: GetLocal(Local::I(0)) }
-0/2: { op: Literal(Lit::I(2)) }
-0/3: { op: Op2(Opr2::GreaterEqI, 0/1, 0/2) }
-0/4: { op: Jcc(0/3, 2/0, 1/0)
-
-1/0: { op: Block(1) }
-1/1: { op: GetLocal(Local::I(0)) }
-1/2: { op: SetLocal(Local::I(1), 1/1) }
-1/3: { op: Jump(3/0) }
-
-2/0: { op: Block(2) }
-2/1: { op: GetLocal(Local::I(0)) }
-2/2: { op: Literal(Lit::I(1)) }
-2/3: { op: Op2(Op2::SubI, 2/1, 2/2) }
-2/4: { op: CallI(Global::I(0), vec![13]) }
-2/5: { op: GetLocal(Local::I(0)) }
-2/6: { op: Literal(Lit::I(2)) }
-2/7: { op: Op2(Op2::SubI, 2/5, 2/6) }
-2/8: { op: CallI(Global::I(0), vec![2/7]) }
-2/9: { op: Op2(Op2::AddI, 2/4, 2/8) }
-2/10:{ op: SetLocal(Local::I(1), 2/9) }
-2/11:{ op: Jump(3/0) }
-
-3/0: { op: Block(3) }
-3/1: { op: GetLocal(Local::I(1)) }
-3/2: { op: Return(3/1) }
-
-*/
+use env::LocalEnv;
+use names::Name;
+use ir::{self, Label, Op, O1, O2, OB, Val, Arg, IR, Local, Global, Lit};
 
 pub fn program(program:&mut Program) -> ir::Program {
     let mut irp = ir::Program::new();
@@ -68,7 +25,6 @@ struct FunGen
 {
     ints: u32,
     nums: u32,
-    temp_ints: u32,
     ir: Vec<IR>,
     last: usize,
     first_block: ir::Label,
@@ -82,7 +38,6 @@ impl FunGen
         FunGen {
             ints: 0,
             nums: 0,
-            temp_ints: 0,
             ir: Vec::new(),
             last: 0,
             first_block: ir::label_unbound(),
@@ -99,6 +54,8 @@ impl FunGen
 
         self.new_block();
         self.bind_label(first_block);
+
+        self.locals.push();
 
         let mut k = 0;
         for vd in &fun.formals {
@@ -126,6 +83,8 @@ impl FunGen
 
         self.bind_label(last_block.clone());
         self.jump(last_block);
+
+        self.locals.pop();
     }
 
     fn gen_stmt(&mut self, stmt:&Stmt) {
@@ -197,12 +156,16 @@ impl FunGen
     }
 
     fn gen_vardefn(&mut self, stmt:&Box<VarDefnStmt>) {
-        // FIXME
+        match stmt.defn.ty {
+            TypeName::INT => { self.new_local_int(&stmt.defn.name); }
+            TypeName::NUM => { self.new_local_num(&stmt.defn.name); }
+            _             => { unreachable!() }
+        }
     }
     
     fn gen_expr(&mut self, e:&Expr) -> Val {
-        match *e {
-            Expr::Unary(ref u) => {
+        match e {
+            &Expr::Unary(ref u) => {
                 let e0 = self.gen_expr(&u.expr);
                 let t = u.ty.get();
                 match u.op {
@@ -212,17 +175,18 @@ impl FunGen
                     Unop::ToNum => self.op1(O1::ToNumNI, e0)
                 }
             }
-            Expr::Binary(ref b) => {
+            &Expr::Binary(ref b) => {
                 let el = self.gen_expr(&b.lhs);
                 if b.op == Binop::And || b.op == Binop::Or {
                     let taken = self.new_label();
                     let not_taken = self.new_label();
                     let var = self.new_temp_int();
-                    self.setlocal(var, el);
-                    self.jcc(if b.op == Binop::And { OB::False } else { OB::True }, el, taken.clone(), not_taken.clone());
+                    self.setlocal(var.clone(), el);
+                    self.jcc(if b.op == Binop::And { OB::False } else { OB::True },
+                             el, taken.clone(), not_taken.clone());
                     self.bind_label(not_taken);
                     let er = self.gen_expr(&b.rhs);
-                    self.setlocal(var, er);
+                    self.setlocal(var.clone(), er);
                     self.bind_label(taken);
                     return self.getlocal(var);
                 }
@@ -243,46 +207,43 @@ impl FunGen
                     _ => unreachable!()
                 }
             }
-            Expr::Assign(ref a) => {
+            &Expr::Assign(ref a) => {
                 let er = self.gen_expr(&a.expr);
-                match self.locals.lookup(&a.name) {
-                    Some(l) => {
-                        self.setlocal(l, er);
-                    }
-                    None => {
-                        // FIXME: type matters here, where do we get that from?
-                        self.setglobal(a.name.clone(), er);
+                if let Some(l) = self.locals.lookup(&a.name) {
+                    self.setlocal(l, er);
+                } else {
+                    match a.ty.get() {
+                        TypeName::INT => self.setglobal(Global::I(a.name), er),
+                        TypeName::NUM => self.setglobal(Global::N(a.name), er),
+                        _ => unreachable!()
                     }
                 }
                 return er;
             }
-            Expr::Call(ref c) => {
-                // Generate outgoing() nodes just before the call;
-                // call just carries the number of arguments
-                //
-                // Coercions are all explicit here.  Return type should
-                // be readable from the call node, we don't need the
-                // signature.
-
-                // for k in 0..c.args.len() {
-                //     let ta = try!(self.check_expr(&c.args[k]));
-                //     try!(self.check_same(ta, sign.formals[k]));
-                // }
-                // c.ty.set(sign.ret);
-                // Ok(sign.ret)
-                0           // FIXME
+            &Expr::Call(ref c) => {
+                let actuals: Vec<Val> = c.args.iter().map(|e| self.gen_expr(e)).collect();
+                self.call(match c.ty.get() {
+                    TypeName::INT => Global::I,
+                    TypeName::NUM => Global::N,
+                    TypeName::VOID => Global::V
+                }(c.name), actuals)
             }
-            Expr::IntLit(i) => {
+            &Expr::IntLit(ref i) => {
                 self.literal(Lit::I(i.n))
             }
-            Expr::NumLit(n) => {
+            &Expr::NumLit(ref n) => {
                 self.literal(Lit::N(n.n))
             }
-            Expr::Id(ref v) => {
-                let t = self.local.lookup(&v.name);
-                //v.ty.set(t);
-                //Ok(t)
-                0 // FIXME
+            &Expr::Id(ref v) => {
+                if let Some(l) = self.locals.lookup(&v.name) {
+                    self.getlocal(l)
+                } else {
+                    match v.ty.get() {
+                        TypeName::INT => self.getglobal(Global::I(v.name)),
+                        TypeName::NUM => self.getglobal(Global::N(v.name)),
+                        _ => unreachable!()
+                    }
+                }
             }
         }
     }
@@ -291,16 +252,22 @@ impl FunGen
     // exist), using a new variable number for the appropriate type.
 
     fn new_local_int(&mut self, name:&Name) -> Local {
-        Local::I(0) // FIXME
+        let l = Local::I(self.next_int());
+        self.locals.add(name, l.clone());
+        return l;
     }
 
     fn new_local_num(&mut self, name:&Name) -> Local {
-        Local::N(0) // FIXME
+        let l = Local::N(self.next_num());
+        self.locals.add(name, l.clone());
+        return l;
     }
 
     fn new_temp_int(&mut self) -> Local {
-        let t = self.next_int();
-        return Local::I(t);
+        let n = self.next_int();
+        let l = Local::I(n);
+        self.locals.add(&Name::T(n), l.clone());
+        return l;
     }
 
     fn getlocal(&mut self, l:Local) -> Val {
@@ -312,13 +279,15 @@ impl FunGen
     }
 
     fn getglobal(&mut self, g:Global) -> Val {
-        //return self.add_instr(Op::GetGlobal(l));
-        0 // FIXME
+        self.add_instr(Op::GetGlobal(g))
     }
 
     fn setglobal(&mut self, g:Global, v:Val) {
-        // FIXME
-        //self.add_instr(Op::SetGlobal(l, v));
+        self.add_instr(Op::SetGlobal(g, v));
+    }
+
+    fn call(&mut self, g:Global, actuals:Vec<Val>) -> Val {
+        self.add_instr(Op::Call(g, actuals))
     }
 
     fn jcc(&mut self, cond:OB, v:Val, if_true:Label, if_false:Label) {
@@ -357,10 +326,6 @@ impl FunGen
         return self.add_instr(Op::Incoming(arg));
     }
     
-    fn outgoing(&mut self, arg: Arg, v: Val) {
-        self.add_instr(Op::Outgoing(arg, v));
-    }
-
     fn op1(&mut self, op:O1, rs:Val) -> Val {
         return self.add_instr(Op::Op1(op, rs));
     }

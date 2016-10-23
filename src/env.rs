@@ -73,33 +73,30 @@ impl<Denotation: Clone> LocalEnv<Denotation>
     }
 
     pub fn add(&mut self, name:&Name, denotation:Denotation) -> bool {
-        match self.lookup_(name) {
-            Some((_, level)) => {
-                if level == 0 {
-                    return false;
-                }
-            }
-            None => {}
+        if let Some((_, 0)) = self.lookup_(name) {
+            return false;
         }
         self.locals[0].push((*name, denotation));
         return true;
     }
 
     fn lookup_(&self, name:&Name) -> Option<(Denotation, i32)> {
-        let mut r = self.locals.len()-1;
-        let mut level = 0;
-        while r > 0 {
-            let rib = &self.locals[r-1];
-            let mut i = 0;
-            while i < rib.len() {
-                let (ref denotation_name, ref denotation) = rib[i];
-                if denotation_name == name {
-                    return Some((denotation.clone(), level));
+        if self.locals.len() > 0 {
+            let mut r = self.locals.len()-1;
+            let mut level = 0;
+            while r > 0 {
+                let rib = &self.locals[r-1];
+                let mut i = 0;
+                while i < rib.len() {
+                    let (ref denotation_name, ref denotation) = rib[i];
+                    if denotation_name == name {
+                        return Some((denotation.clone(), level));
+                    }
+                    i = i+1;
                 }
-                i = i+1;
+                r = r-1;
+                level = level + 1;
             }
-            r = r-1;
-            level = level + 1;
         }
         return None;
     }

@@ -88,7 +88,6 @@ pub enum Op {
     Notreached,
     Literal(Lit),               // Has result
     Incoming(Arg),              // Has result
-    Outgoing(Arg, Val),
     GetLocal(Local),            // Has result
     SetLocal(Local, Val),
     GetGlobal(Global),          // Has result

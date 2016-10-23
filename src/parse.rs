@@ -1,7 +1,6 @@
 use ast::*;
 use err::ParseErr;
-use lex::Lex;
-use lex::Token;
+use lex::{Lex, Token};
 use names::Name;
 
 pub fn parse(l:Lex) -> Result<Program, ParseErr> {
@@ -89,25 +88,25 @@ impl<'a> Parse<'a>
     fn vardefn(&mut self, t:Token) -> Result<VarDefn, ParseErr> {
         let ty = try!(self.token_to_type(t));
         let name = try!(self.match_ident());
-        try!(self.match_token(Token::SEMI));
+        try!(self.match_token(Token::Semi));
         Ok(VarDefn::new(name, ty))
     }
 
     // FN consumed
     fn fundefn(&mut self) -> Result<FunDefn, ParseErr> {
         let name = try!(self.match_ident());
-        try!(self.match_token(Token::LPAREN));
+        try!(self.match_token(Token::LParen));
         let mut formals = Vec::<VarDefn>::new();
         while self.peek() == Token::INT || self.peek() == Token::NUM {
             let t = self.next();
             let ty = try!(self.token_to_type(t));
             let name = try!(self.match_ident());
             formals.push(VarDefn::new(name, ty));
-            if !self.eat_token(Token::COMMA) {
+            if !self.eat_token(Token::Comma) {
                 break;
             }
         }
-        try!(self.match_token(Token::RPAREN));
+        try!(self.match_token(Token::RParen));
         let ty = 
             if self.eat_token(Token::ARROW) {
                 let t = self.next();
@@ -132,7 +131,7 @@ impl<'a> Parse<'a>
             _ => {
                 self.unget(t);
                 let e = try!(self.expr());
-                try!(self.match_token(Token::SEMI));
+                try!(self.match_token(Token::Semi));
                 Ok(ExprStmt::new(e))
             }
         }
@@ -176,11 +175,11 @@ impl<'a> Parse<'a>
     
     // RETURN consumed
     fn return_stmt(&mut self) -> Result<Stmt, ParseErr> {
-        if self.eat_token(Token::SEMI) {
+        if self.eat_token(Token::Semi) {
             Ok(ReturnStmt::new(None))
         } else {
             let e = try!(self.expr());
-            try!(self.match_token(Token::SEMI));
+            try!(self.match_token(Token::Semi));
             Ok(ReturnStmt::new(Some(e)))
         }
     }
@@ -195,9 +194,9 @@ impl<'a> Parse<'a>
     // Expressions
 
     fn paren_expr(&mut self) -> Result<Expr, ParseErr> {
-        try!(self.match_token(Token::LPAREN));
+        try!(self.match_token(Token::LParen));
         let e = try!(self.expr());
-        try!(self.match_token(Token::RPAREN));
+        try!(self.match_token(Token::RParen));
         Ok(e)
     }
     
@@ -225,6 +224,8 @@ impl<'a> Parse<'a>
         return Ok(lhs);
     }
 
+    // OPTIMIZEME: Recursive descent isn't the thing here.
+
     binop_left! { or_expr, and_expr, OR }
     binop_left! { and_expr, eq_expr, AND }
     binop_left! { eq_expr, cmp_expr, EQUALS, NOTEQUALS }
@@ -245,18 +246,18 @@ impl<'a> Parse<'a>
     fn primary_expr(&mut self) -> Result<Expr, ParseErr> {
         match self.next() {
             Token::IDENT(id) => {
-                if self.eat_token(Token::LPAREN) {
+                if self.eat_token(Token::LParen) {
                     let mut args = Vec::<Expr>::new();
-                    if self.peek() != Token::RPAREN {
+                    if self.peek() != Token::RParen {
                         loop {
                             let e = try!(self.expr());
                             args.push(e);
-                            if !self.eat_token(Token::COMMA) {
+                            if !self.eat_token(Token::Comma) {
                                 break;
                             }
                         }
                     }
-                    try!(self.match_token(Token::RPAREN));
+                    try!(self.match_token(Token::RParen));
                     Ok(CallExpr::new(id, args))
                 } else {
                     Ok(IdExpr::new(id))
@@ -274,9 +275,9 @@ impl<'a> Parse<'a>
             Token::NUMLIT(n) => {
                 Ok(NumLitExpr::new(n))
             }
-            Token::LPAREN => {
+            Token::LParen => {
                 let expr = try!(self.expr());
-                try!(self.match_token(Token::RPAREN));
+                try!(self.match_token(Token::RParen));
                 Ok(expr)
             }
             _ => Err(self.error("Invalid expression"))
@@ -286,10 +287,10 @@ impl<'a> Parse<'a>
     // Token stream
 
     fn match_ident(&mut self) -> Result<Name, ParseErr> {
-        let t = self.next();
-        match t {
-            Token::IDENT(name) => Ok(name),
-            _                  => Err(self.error("Expected identifier"))
+        if let Token::IDENT(name) = self.next() {
+            Ok(name)
+        } else {
+            Err(self.error("Expected identifier"))
         }
     }
 

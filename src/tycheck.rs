@@ -48,9 +48,9 @@ fn check_globals(names:&mut NameTable, p:&mut Program, env:&mut Box<GlobalEnv<Bi
         }
     }
 
-    env.add_extern(&names.add(&String::from("printi")),
+    env.add_extern(&names.add(&"printi".to_string()),
                    Binding::Fn(Signature { ret: TypeName::VOID, formals: vec![TypeName::INT] }));
-    env.add_extern(&names.add(&String::from("printn")),
+    env.add_extern(&names.add(&"printn".to_string()),
                    Binding::Fn(Signature { ret: TypeName::VOID, formals: vec![TypeName::NUM] }));
 
     Ok(())
@@ -91,7 +91,7 @@ fn check_functions(p:&mut Program, env:&Env) -> Res {
 }
 
 fn error(msg: &str) -> TypeErr {
-    TypeErr { msg: String::from(msg) }
+    TypeErr { msg: msg.to_string() }
 }
     
 struct FnCheck

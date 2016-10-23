@@ -16,10 +16,10 @@ pub struct Lex<'a>
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Token
 {
-    SEMI,
-    COMMA,
-    LPAREN,
-    RPAREN,
+    Semi,
+    Comma,
+    LParen,
+    RParen,
     LBRACE,
     RBRACE,
     ARROW,
@@ -72,16 +72,15 @@ impl<'a> Lex<'a>
     }
 
     pub fn next(&mut self) -> Token {
-        let c = self.get();
-        match c {
+        match self.get() {
             EOICHAR => Token::EOI,
             ' ' | '\t' | '\r' => self.next(),
             '\n' => { self.lineno += 1; self.next() }
-            ';' => Token::SEMI,
-            ',' => Token::COMMA,
-            '(' => Token::LPAREN,
+            ';' => Token::Semi,
+            ',' => Token::Comma,
+            '(' => Token::LParen,
             '{' => Token::LBRACE,
-            ')' => Token::RPAREN,
+            ')' => Token::RParen,
             '}' => Token::RBRACE,
             '+' => Token::PLUS,
             '-' => { if self.eat('>') { Token::ARROW } else { Token::MINUS } }
@@ -94,10 +93,14 @@ impl<'a> Lex<'a>
             '&' => { if self.eat('&') { Token::AND } else { self.bad() } }
             '|' => { if self.eat('|') { Token::OR } else { self.bad() } }
             '!' => { if self.eat('=') { Token::NOTEQUALS } else { Token::NOT } }
-            '0' | '1' | '2' | '3' | '4' |
-            '5' | '6' | '7' | '8' | '9' | '.' => self.num_literal(c),
-            _ => {
+            c @ '0' ... '9' | c @ '.' => self.num_literal(c),
+            c @ _ => {
                 if is_initial(c) {
+                    // OPTIMIZEME: here we should use a common buffer that's held in
+                    // the lexer for accumulating the string's chars.  Then we should probe
+                    // the name table to see if the name is already known.  Only when
+                    // the name is already known should we clone the string and pass
+                    // ownership of it to the name table.
                     let s = self.name(c);
                     match s.as_str() {
                         "else"   => Token::ELSE,
@@ -118,8 +121,10 @@ impl<'a> Lex<'a>
 
     fn num_literal(&mut self, mut c: char) -> Token {
         let mut is_num = false;
+        // OPTIMIZEME: here we should use a common buffer that's held in the lexer
+        // for accumulating the number's chars.
         let mut s = String::new();
-        while c >= '0' && c <= '9' {
+        while is_digit(c) {
             s.push(c);
             c = self.get();
         }
@@ -127,7 +132,7 @@ impl<'a> Lex<'a>
             is_num = true;
             s.push(c);
             c = self.get();
-            while c >= '0' && c <= '9' {
+            while is_digit(c) {
                 s.push(c);
                 c = self.get();
             }
@@ -140,22 +145,21 @@ impl<'a> Lex<'a>
                 s.push(c);
                 c = self.get();
             }
-            while c >= '0' && c <= '9' {
+            while is_digit(c) {
                 s.push(c);
                 c = self.get();
             }
         }
         self.unget(c);
-        // FIXME: handle the errors
         if is_num {
-            Token::NUMLIT(s.parse::<f64>().unwrap())
+            if let Ok(x) = s.parse::<f64>() { Token::NUMLIT(x) } else { self.bad() }
         } else {
-            Token::INTLIT(s.parse::<i64>().unwrap())
+            if let Ok(x) = s.parse::<i64>() { Token::INTLIT(x) } else { self.bad() }
         }
     }
 
     fn name(&mut self, c: char) -> String {
-        let mut s = String::from("");
+        let mut s = String::new();
         s.push(c);
         while is_subsequent(self.peek()) {
             s.push(self.get());
@@ -215,11 +219,24 @@ impl<'a> Lex<'a>
 }
 
 fn is_initial(c: char) -> bool {
-    c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_'
+    match c {
+        'a' ... 'z' | 'A' ... 'Z' | '_' => true,
+        _ => false
+    }
+}
+
+fn is_digit(c: char) -> bool {
+    match c {
+        '0' ... '9' => true,
+        _ => false
+    }
 }
 
 fn is_subsequent(c: char) -> bool {
-    is_initial(c) || c >= '0' && c <= '9'
+    match c {
+        'a' ... 'z' | 'A' ... 'Z' | '_' | '0' ... '9' => true,
+        _ => false
+    }
 }
 
 // TODO: test code
